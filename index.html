@@ -1,13 +1,289 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>finance-vision</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinanceVision</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    #loading { padding: 40px; text-align: center; color: #666; }
+    #error { padding: 20px; background: #fee; color: #c00; border-radius: 8px; margin: 20px; }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div id="loading">Carregando...</div>
+  </div>
+  
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <script>
+    window.addEventListener('error', function(e) {
+      document.getElementById('root').innerHTML = '<div id="error">Erro ao carregar: ' + e.message + '</div>';
+    });
+  </script>
+  
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const CATEGORIAS = ['Aluguel', 'Alimentação', 'Lazer', 'Salário', 'Transporte', 'Outros'];
+
+    function Header() {
+      return React.createElement('header', null,
+        React.createElement('h1', null, 'FinanceVision')
+      );
+    }
+
+    function ResumoFinanceiro({ saldo, totalEntradas, totalSaidas }) {
+      return React.createElement('div', { className: 'resumo' },
+        React.createElement('div', { className: 'card saldo' },
+          React.createElement('span', null, 'Saldo Atual'),
+          React.createElement('strong', null, 'R$ ' + saldo.toFixed(2))
+        ),
+        React.createElement('div', { className: 'card entradas' },
+          React.createElement('span', null, 'Entradas'),
+          React.createElement('strong', null, 'R$ ' + totalEntradas.toFixed(2))
+        ),
+        React.createElement('div', { className: 'card saidas' },
+          React.createElement('span', null, 'Saídas'),
+          React.createElement('strong', null, 'R$ ' + totalSaidas.toFixed(2))
+        )
+      );
+    }
+
+    function GraficoBarras({ totalEntradas, totalSaidas }) {
+      const canvasRef = useRef(null);
+      const chartRef = useRef(null);
+
+      useEffect(() => {
+        if (!canvasRef.current) return;
+        
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return;
+        
+        if (chartRef.current) {
+          chartRef.current.destroy();
+        }
+
+        try {
+          chartRef.current = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: ['Entradas', 'Saídas'],
+              datasets: [{
+                label: 'Fluxo de Caixa',
+                data: [totalEntradas, totalSaidas],
+                backgroundColor: ['#2ecc71', '#e74c3c']
+              }]
+            },
+            options: { 
+              responsive: true, 
+              plugins: { legend: { display: false } }
+            }
+          });
+        } catch(e) { console.error('GraficoBarras error:', e); }
+
+        return () => {
+          if (chartRef.current) {
+            chartRef.current.destroy();
+          }
+        };
+      }, [totalEntradas, totalSaidas]);
+
+      return React.createElement('canvas', { ref: canvasRef });
+    }
+
+    function GraficoRosca({ despesasPorCategoria }) {
+      const canvasRef = useRef(null);
+      const chartRef = useRef(null);
+      const labelsDespesas = Object.keys(despesasPorCategoria);
+      const dadosDespesas = Object.values(despesasPorCategoria);
+      const cores = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
+
+      useEffect(() => {
+        if (!canvasRef.current) return;
+        
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return;
+        
+        if (chartRef.current) {
+          chartRef.current.destroy();
+        }
+
+        try {
+          if (labelsDespesas.length > 0) {
+            chartRef.current = new Chart(ctx, {
+              type: 'doughnut',
+              data: {
+                labels: labelsDespesas,
+                datasets: [{
+                  data: dadosDespesas,
+                  backgroundColor: cores.slice(0, labelsDespesas.length),
+                  borderWidth: 0
+                }]
+              },
+              options: { 
+                responsive: true, 
+                plugins: { legend: { position: 'bottom' } }
+              }
+            });
+          }
+        } catch(e) { console.error('GraficoRosca error:', e); }
+
+        return () => {
+          if (chartRef.current) {
+            chartRef.current.destroy();
+          }
+        };
+      }, [despesasPorCategoria]);
+
+      if (labelsDespesas.length === 0) {
+        return React.createElement('p', { className: 'sem-dados' }, 'Nenhuma despesa registrada');
+      }
+
+      return React.createElement('canvas', { ref: canvasRef });
+    }
+
+    function TransactionCard({ descricao, valor, tipo, categoria, onDelete }) {
+      const estiloValor = {
+        color: tipo === 'Entrada' ? '#2ecc71' : '#e74c3c',
+        fontWeight: 'bold'
+      };
+
+      return React.createElement('div', { className: 'transaction-card' },
+        React.createElement('div', { className: 'transaction-info' },
+          React.createElement('span', { className: 'transaction-desc' }, descricao),
+          React.createElement('span', { className: 'transaction-cat' }, categoria)
+        ),
+        React.createElement('div', { className: 'transaction-actions' },
+          React.createElement('span', { style: estiloValor },
+            (tipo === 'Entrada' ? '+ ' : '- ') + 'R$ ' + valor
+          ),
+          React.createElement('button', { className: 'delete-btn', onClick: onDelete }, '×')
+        )
+      );
+    }
+
+    function Formulario({ onAdicionar }) {
+      const [descricao, setDescricao] = useState('');
+      const [valor, setValor] = useState('');
+      const [tipo, setTipo] = useState('Entrada');
+      const [categoria, setCategoria] = useState(CATEGORIAS[0]);
+      const [erro, setErro] = useState('');
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        setErro('');
+
+        if (!descricao.trim()) {
+          setErro('Descrição obrigatória');
+          return;
+        }
+        if (!valor || Number(valor) <= 0) {
+          setErro('Valor deve ser positivo');
+          return;
+        }
+
+        onAdicionar({ descricao, valor: Number(valor), tipo, categoria });
+        setDescricao('');
+        setValor('');
+      };
+
+      return React.createElement('form', { className: 'form-transacao', onSubmit: handleSubmit },
+        React.createElement('h3', null, 'Nova Transação'),
+        erro && React.createElement('p', { className: 'erro' }, erro),
+        React.createElement('input', { type: 'text', placeholder: 'Descrição', value: descricao, onChange: e => setDescricao(e.target.value) }),
+        React.createElement('input', { type: 'number', placeholder: 'Valor', value: valor, onChange: e => setValor(e.target.value), min: '0', step: '0.01' }),
+        React.createElement('select', { value: tipo, onChange: e => setTipo(e.target.value) },
+          React.createElement('option', { value: 'Entrada' }, 'Entrada'),
+          React.createElement('option', { value: 'Saída' }, 'Saída')
+        ),
+        React.createElement('select', { value: categoria, onChange: e => setCategoria(e.target.value) },
+          CATEGORIAS.map(cat => React.createElement('option', { key: cat, value: cat }, cat))
+        ),
+        React.createElement('button', { type: 'submit' }, 'Adicionar')
+      );
+    }
+
+    function Filtros({ filtro, onChange }) {
+      return React.createElement('div', { className: 'filtros' },
+        React.createElement('button', { className: filtro === 'Todos' ? 'active' : '', onClick: () => onChange('Todos') }, 'Todos'),
+        React.createElement('button', { className: filtro === 'Entrada' ? 'active' : '', onClick: () => onChange('Entrada') }, 'Receitas'),
+        React.createElement('button', { className: filtro === 'Saída' ? 'active' : '', onClick: () => onChange('Saída') }, 'Despesas')
+      );
+    }
+
+    function App() {
+      const [transacoes, setTransacoes] = useState(() => {
+        try {
+          const saved = localStorage.getItem('financevision_transacoes');
+          return saved ? JSON.parse(saved) : [];
+        } catch(e) { return []; }
+      });
+      const [filtro, setFiltro] = useState('Todos');
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('financevision_transacoes', JSON.stringify(transacoes));
+        } catch(e) { console.error('LocalStorage error:', e); }
+      }, [transacoes]);
+
+      const totalEntradas = transacoes.filter(t => t.tipo === 'Entrada').reduce((acc, t) => acc + Number(t.valor), 0);
+      const totalSaidas = transacoes.filter(t => t.tipo === 'Saída').reduce((acc, t) => acc + Number(t.valor), 0);
+      const saldo = totalEntradas - totalSaidas;
+
+      const despesasPorCategoria = transacoes
+        .filter(t => t.tipo === 'Saída')
+        .reduce((acc, t) => {
+          acc[t.categoria] = (acc[t.categoria] || 0) + Number(t.valor);
+          return acc;
+        }, {});
+
+      const transacoesFiltradas = transacoes.filter(t => filtro === 'Todos' || t.tipo === filtro);
+
+      const adicionarTransacao = (nova) => setTransacoes([...transacoes, { id: Date.now(), ...nova }]);
+      const removerTransacao = (id) => setTransacoes(transacoes.filter(t => t.id !== id));
+
+      return React.createElement('div', { className: 'app' },
+        React.createElement(Header),
+        React.createElement(ResumoFinanceiro, { saldo, totalEntradas, totalSaidas }),
+        React.createElement('div', { className: 'graficos' },
+          React.createElement('div', { className: 'grafico' },
+            React.createElement('h3', null, 'Entradas vs Saídas'),
+            React.createElement(GraficoBarras, { totalEntradas, totalSaidas })
+          ),
+          React.createElement('div', { className: 'grafico' },
+            React.createElement('h3', null, 'Despesas por Categoria'),
+            React.createElement(GraficoRosca, { despesasPorCategoria })
+          )
+        ),
+        React.createElement(Formulario, { onAdicionar: adicionarTransacao }),
+        React.createElement(Filtros, { filtro, onChange: setFiltro }),
+        React.createElement('div', { className: 'lista-transacoes' },
+          transacoesFiltradas.map(item => 
+            React.createElement(TransactionCard, { 
+              key: item.id, 
+              descricao: item.descricao, 
+              valor: item.valor, 
+              tipo: item.tipo, 
+              categoria: item.categoria, 
+              onDelete: () => removerTransacao(item.id) 
+            })
+          )
+        )
+      );
+    }
+
+    // Render
+    try {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(React.createElement(App));
+    } catch(e) {
+      document.getElementById('root').innerHTML = '<div id="error">Erro ao renderizar: ' + e.message + '</div>';
+    }
+  </script>
+</body>
 </html>
